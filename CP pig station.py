@@ -265,50 +265,49 @@ class PigStationICCP:
             spine.set_linewidth(1.5)
             spine.set_color('black')
 
-        # Rest of the hover functionality remains the same
-        annot = ax.annotate("", xy=(0, 0), xytext=(10, 10),
-                           textcoords="offset points",
-                           bbox=dict(boxstyle="round", fc="white", alpha=0.9, ec="gray"),
-                           arrowprops=dict(arrowstyle="->"))
-        annot.set_visible(False)
+        # Create a fixed measurement point (dot) that follows the mouse
+        measurement_dot = ax.plot([], [], 'o', markersize=8, color='green', alpha=0.8, zorder=10)[0]
 
-        def hover(event):
-            # Hover functionality code remains unchanged
+        # Create a fixed info box in the corner of the plot
+        info_box = ax.text(0.02, 0.02, "", transform=ax.transAxes, fontsize=10,
+                          bbox=dict(facecolor='white', alpha=0.8, edgecolor='black', pad=5),
+                          verticalalignment='bottom')
+
+        # Function to handle mouse movement
+        def on_mouse_move(event):
             if event.inaxes == ax:
-                x_val, y_val = event.xdata, event.ydata
-                if x_val is not None and y_val is not None:
-                    # Convert cursor position to array indices
-                    x_range = x[-1] - x[0]
-                    y_range = y[-1] - y[0]
+                # Get mouse coordinates
+                mouse_x, mouse_y = event.xdata, event.ydata
 
-                    # Calculate normalized position (0-1)
-                    x_norm = (x_val - x[0]) / x_range
-                    y_norm = (y_val - y[0]) / y_range
+                # Find the nearest grid point
+                x_idx = np.argmin(np.abs(np.linspace(0, self.underground_pipeline_length, 200) - mouse_x))
+                y_idx = np.argmin(np.abs(np.linspace(-2, 6, 160) - mouse_y))
 
-                    # Convert to indices
-                    x_idx = int(x_norm * (len(x) - 1))
-                    y_idx = int(y_norm * (len(y) - 1))
+                # Get the potential at that point (convert to mV)
+                pot_val = potential[y_idx, x_idx] * 1000
 
-                    # Ensure indices are within bounds
-                    x_idx = max(0, min(x_idx, len(x) - 1))
-                    y_idx = max(0, min(y_idx, len(y) - 1))
+                # Update the dot position
+                measurement_dot.set_data([mouse_x], [mouse_y])
 
-                    # Get potential value (convert to mV for display)
-                    pot_val = potential[y_idx, x_idx] * 1000
-
-                    # Update annotation position and text
-                    annot.xy = (x_val, y_val)
-                    annot.set_text(f'Position: ({x_val:.2f}m, {y_val:.2f}m)\nPotential: {pot_val:.1f} mV')
-                    annot.set_visible(True)
-                    fig.canvas.draw_idle()
+                # Set dot color based on protection status
+                if pot_val > -850:
+                    measurement_dot.set_color('red')  # Under-protected
+                    status = "Under-protected"
+                elif pot_val < -1200:
+                    measurement_dot.set_color('orange')  # Over-protected
+                    status = "Over-protected"
                 else:
-                    annot.set_visible(False)
-                    fig.canvas.draw_idle()
-            else:
-                annot.set_visible(False)
+                    measurement_dot.set_color('green')  # Optimally protected
+                    status = "Optimally protected"
+
+                # Update the info box
+                info_box.set_text(f"Position: ({mouse_x:.2f}m, {mouse_y:.2f}m)\nPotential: {pot_val:.1f} mV\nStatus: {status}")
+
+                # Redraw the canvas
                 fig.canvas.draw_idle()
 
-        fig.canvas.mpl_connect('motion_notify_event', hover)
+        # Connect the event handler
+        fig.canvas.mpl_connect('motion_notify_event', on_mouse_move)
 
         return fig, ax, potential
 
